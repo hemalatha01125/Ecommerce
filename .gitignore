@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Data files (avoid large files)
+data/raw/
+data/processed/
+
+# Model files
+data/models/*.pkl
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Build files
+dist/
+build/
+*.egg-info/

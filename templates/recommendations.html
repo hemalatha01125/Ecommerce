@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recommendations</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<h2 class="title" color="white">Recommended For You</h2>
+
+<div class="products">
+
+{% for item in results %}
+<div class="card">
+
+    <img src="{{ item.img_link if item.img_link else 'https://via.placeholder.com/200' }}" alt="product">
+
+    <h3>{{ item.product_name }}</h3>
+
+    <p class="rating">⭐ {{ item.rating }}</p>
+
+    <p class="price">₹ {{ item.discounted_price }}</p>
+
+    <button>Add to Cart</button>
+
+</div>
+{% endfor %}
+
+</div>
+
+<div class="back">
+    <a href="/">⬅ Go Back</a>
+</div>
+
+</body>
+</html>

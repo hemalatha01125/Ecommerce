@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recommender System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <h1>🛒 Product Recommender</h1>
+
+    <form action="/recommend" method="post">
+        <input type="text" name="user_id" placeholder="Enter User ID" required>
+        <input type="text" name="product_id" placeholder="Enter Product ID" required>
+        <button type="submit">Get Recommendations</button>
+    </form>
+</div>
+
+</body>
+</html>
