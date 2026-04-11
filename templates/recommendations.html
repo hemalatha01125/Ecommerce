@@ -13,13 +13,18 @@
 {% for item in results %}
 <div class="card">
 
-    <img src="{{ item.img_link if item.img_link else 'https://via.placeholder.com/200' }}" alt="product">
+    <img
+        src="{{ item.img_link if item.img_link else 'https://via.placeholder.com/200?text=No+Image' }}"
+        alt="{{ item.product_name }}"
+        loading="lazy"
+        onerror="handleImageError(this)"
+    >
 
     <h3>{{ item.product_name }}</h3>
 
     <p class="rating">⭐ {{ item.rating }}</p>
 
-    <p class="price">₹ {{ item.discounted_price }}</p>
+    <p class="price"> {{ item.discounted_price }}</p>
 
     <button>Add to Cart</button>
 
@@ -31,6 +36,18 @@
 <div class="back">
     <a href="/">⬅ Go Back</a>
 </div>
+
+<script>
+function handleImageError(img) {
+    if (img.dataset.fallbackApplied === "true") {
+        return;
+    }
+
+    img.dataset.fallbackApplied = "true";
+    img.src = "../static/images/image-not-available.png";
+    img.alt = "Image unavailable";
+}
+</script>
 
 </body>
 </html>

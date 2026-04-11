@@ -117,7 +117,9 @@ button:hover {
 }
 
 .card h3 {
+    display: -webkit-box;
     font-size: 14px;
-    height: 60px;
     overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
 }
