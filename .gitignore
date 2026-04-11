@@ -20,11 +20,11 @@ env/
 Thumbs.db
 
 # Data files (avoid large files)
-data/raw/
-data/processed/
+#data/raw/
+#data/processed/
 
 # Model files
-data/models/*.pkl
+#data/models/*.pkl
 
 # Logs
 *.log
