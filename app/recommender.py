@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 df = pd.read_csv("data/raw/amazon.csv")
 
 # Keep required columns
-df = df[['user_id', 'product_id', 'product_name', 'category', 'about_product', 'rating', 'discounted_price']]
+df = df[['user_id', 'product_id', 'product_name', 'category', 'about_product', 'rating', 'discounted_price', 'img_link']]
 
 # Drop missing values
 df = df.dropna()
@@ -51,7 +51,7 @@ user_sim_df = pd.DataFrame(user_sim, index=user_item.index, columns=user_item.in
 # =========================
 def get_cf_scores(user_id):
     if user_id not in user_item.index:
-        return pd.Series()
+        return pd.Series(dtype=float)
 
     similar_users = user_sim_df[user_id].sort_values(ascending=False)[1:6]
 
@@ -73,7 +73,7 @@ def get_cf_scores(user_id):
 # =========================
 def get_cb_scores(product_id):
     if product_id not in df['product_id'].values:
-        return pd.Series()
+        return pd.Series(dtype=float)
 
     idx = df[df['product_id'] == product_id].index[0]
 
@@ -86,6 +86,8 @@ def get_cb_scores(product_id):
 # HYBRID RECOMMENDER
 # =========================
 def hybrid_recommend(user_id, product_id, top_n=5, alpha=0.7):
+    user_id = str(user_id).strip()
+    product_id = str(product_id).strip()
 
     # Get scores
     cf_scores = get_cf_scores(user_id)
@@ -105,11 +107,24 @@ def hybrid_recommend(user_id, product_id, top_n=5, alpha=0.7):
     final_scores = final_scores.sort_values(ascending=False)
 
     # Get top products
-    top_products = final_scores.head(top_n).index
+    top_products = final_scores.head(top_n).index.tolist()
 
-    # Return full details
-    results = df[df['product_id'].isin(top_products)][
-        ['product_id', 'product_name', 'rating', 'discounted_price']
-    ]
+    if not top_products:
+        print(f"[hybrid_recommend] No recommendations found for user_id={user_id}, product_id={product_id}")
+        return []
+
+    # Return full details in recommendation order
+    results = (
+        df[df['product_id'].isin(top_products)][
+            ['product_id', 'product_name', 'rating', 'discounted_price', 'img_link']
+        ]
+        .drop_duplicates(subset=['product_id'])
+        .set_index('product_id')
+        .reindex(top_products)
+        .reset_index()
+        .fillna('')
+        .to_dict(orient='records')
+    )
+    print(results)
 
     return results
