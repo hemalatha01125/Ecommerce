@@ -1,20 +1,227 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Recommender System</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
+{% extends "layout.html" %}
 
+{% block title %}Home - E-Commerce Recommender{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 4rem 2rem;
+        text-align: center;
+        border-radius: 8px;
+        margin: 3rem 0;
+    }
+    
+    .hero h1 {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .hero p {
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+        opacity: 0.9;
+    }
+    
+    .hero-buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .btn {
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .btn-primary {
+        background-color: white;
+        color: #667eea;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    
+    .btn-secondary {
+        background-color: rgba(255,255,255,0.2);
+        color: white;
+        border: 2px solid white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: white;
+        color: #667eea;
+        transform: translateY(-2px);
+    }
+    
+    .features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin: 3rem 0;
+    }
+    
+    .feature-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+    }
+    
+    .feature-card .icon {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .feature-card h3 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+    
+    .feature-card p {
+        color: #7f8c8d;
+        font-size: 0.95rem;
+    }
+    
+    .how-it-works {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        margin: 3rem 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .how-it-works h2 {
+        color: #2c3e50;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+    
+    .steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    
+    .step {
+        text-align: center;
+    }
+    
+    .step-number {
+        width: 50px;
+        height: 50px;
+        background: #667eea;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.5rem;
+        margin: 0 auto 1rem;
+    }
+    
+    .step h4 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+    
+    .step p {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
 <div class="container">
-    <h1>🛒 Product Recommender</h1>
+    <!-- Hero Section -->
+    <div class="hero">
+        <h1>🛒 Welcome to E-Commerce Recommender</h1>
+        <p>Get intelligent, personalized product recommendations powered by advanced algorithms</p>
+        <div class="hero-buttons">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Login</a>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-secondary">Create Account</a>
+        </div>
+    </div>
 
-    <form action="/recommend" method="post">
-        <input type="text" name="user_id" placeholder="Enter User ID" required>
-        <input type="text" name="product_id" placeholder="Enter Product ID" required>
-        <button type="submit">Get Recommendations</button>
-    </form>
+    <!-- Features Section -->
+    <div class="features">
+        <div class="feature-card">
+            <div class="icon">🤖</div>
+            <h3>Smart Algorithms</h3>
+            <p>Advanced hybrid recommendation engine that learns from user behavior and product characteristics</p>
+        </div>
+        
+        <div class="feature-card">
+            <div class="icon">⚡</div>
+            <h3>Fast & Accurate</h3>
+            <p>Get instant, highly relevant product recommendations based on comprehensive analysis</p>
+        </div>
+        
+        <div class="feature-card">
+            <div class="icon">🔒</div>
+            <h3>Secure Account</h3>
+            <p>Your data is protected with secure authentication and encrypted storage</p>
+        </div>
+        
+        <div class="feature-card">
+            <div class="icon">📊</div>
+            <h3>Data-Driven</h3>
+            <p>Recommendations based on real e-commerce data and user patterns</p>
+        </div>
+    </div>
+
+    <!-- How It Works Section -->
+    <div class="how-it-works">
+        <h2>How It Works</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h4>Sign Up</h4>
+                <p>Create a free account to get started</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h4>Log In</h4>
+                <p>Access your personalized dashboard</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h4>Enter Details</h4>
+                <p>Provide user and product IDs</p>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <h4>Get Results</h4>
+                <p>Receive tailored recommendations</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call to Action -->
+    <div style="background: #f8f9fa; padding: 3rem 2rem; border-radius: 8px; text-align: center; margin: 3rem 0;">
+        <h2 style="color: #2c3e50; margin-bottom: 1rem;">Ready to Get Started?</h2>
+        <p style="color: #555; margin-bottom: 1.5rem;">Join thousands of satisfied e-commerce users experiencing the power of intelligent product recommendations</p>
+        <a href="{{ url_for('auth.register') }}" class="btn btn-primary" style="display: inline-block;">Create Your Account Now</a>
+    </div>
 </div>
-
-</body>
-</html>
+{% endblock %}

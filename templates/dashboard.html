@@ -1,0 +1,215 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - E-Commerce Recommender{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-container {
+        max-width: 900px;
+        margin: 2rem auto;
+    }
+    
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+    }
+    
+    .dashboard-header h1 {
+        margin-bottom: 0.5rem;
+    }
+    
+    .dashboard-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    @media (max-width: 768px) {
+        .dashboard-content {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .card {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .card h3 {
+        color: #2c3e50;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #2c3e50;
+    }
+    
+    .form-group input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #bdc3c7;
+        border-radius: 4px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+    }
+    
+    .form-group input:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
+    }
+    
+    .form-hint {
+        font-size: 0.85rem;
+        color: #7f8c8d;
+        margin-top: 0.25rem;
+    }
+    
+    .btn-submit {
+        width: 100%;
+        padding: 0.75rem;
+        background-color: #3498db;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    
+    .btn-submit:hover {
+        background-color: #2980b9;
+    }
+    
+    .info-section {
+        background-color: #ecf0f1;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+    }
+    
+    .info-section h4 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+    
+    .info-section p {
+        color: #555;
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+    
+    .feature-list {
+        list-style: none;
+        margin-top: 1rem;
+    }
+    
+    .feature-list li {
+        padding: 0.5rem 0;
+        padding-left: 1.5rem;
+        position: relative;
+        color: #555;
+    }
+    
+    .feature-list li:before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #27ae60;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Header -->
+    <div class="dashboard-header">
+        <h1>Welcome to Your Dashboard! 👋</h1>
+        <p>Get personalized product recommendations based on user and product selection</p>
+    </div>
+
+    <!-- Info Section -->
+    <div class="info-section">
+        <h4>About Our Recommendation System</h4>
+        <p>
+            Our hybrid recommendation engine analyzes user preferences and product characteristics 
+            to suggest the best products for you. Simply enter a User ID and Product ID to get started!
+        </p>
+        <ul class="feature-list">
+            <li>Advanced hybrid recommendation algorithm</li>
+            <li>Personalized suggestions based on your preferences</li>
+            <li>Fast and accurate results</li>
+            <li>Multiple recommendation factors considered</li>
+        </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="dashboard-content">
+        <!-- Form Card -->
+        <div class="card">
+            <h3>🎯 Get Recommendations</h3>
+            <form method="POST" action="{{ url_for('main.recommend') }}">
+                <div class="form-group">
+                    <label for="user_id">User ID</label>
+                    <input type="text" id="user_id" name="user_id" placeholder="e.g., U001" required autofocus>
+                    <div class="form-hint">The ID of the user to get recommendations for</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="product_id">Product ID</label>
+                    <input type="text" id="product_id" name="product_id" placeholder="e.g., P001" required>
+                    <div class="form-hint">Reference product ID for generating recommendations</div>
+                </div>
+                
+                <button type="submit" class="btn-submit">Get Recommendations</button>
+            </form>
+        </div>
+
+        <!-- Stats Card -->
+        <div class="card">
+            <h3>📊 Your Account</h3>
+            <div style="padding: 2rem 0;">
+                <p style="margin-bottom: 1rem;">
+                    <strong>Username:</strong> <span style="color: #3498db;">{{ username }}</span>
+                </p>
+                <p style="margin-bottom: 1rem;">
+                    <strong>Account Status:</strong> <span style="color: #27ae60;">✓ Active</span>
+                </p>
+                <p style="color: #7f8c8d; font-size: 0.95rem;">
+                    You're logged in and ready to explore personalized product recommendations. 
+                    Fill in the form on the left to get started!
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Example Usage -->
+    <div class="card">
+        <h3>💡 How to Use</h3>
+        <ol style="padding-left: 2rem; color: #555; line-height: 1.8;">
+            <li><strong>Enter a User ID:</strong> This identifies the customer for whom you want recommendations</li>
+            <li><strong>Enter a Product ID:</strong> This is a reference product to base recommendations on</li>
+            <li><strong>Click "Get Recommendations":</strong> The system will analyze and display relevant products</li>
+            <li><strong>Review Results:</strong> See detailed information about each recommended product</li>
+        </ol>
+    </div>
+</div>
+{% endblock %}
