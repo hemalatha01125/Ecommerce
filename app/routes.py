@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from .recommender import hybrid_recommend
+from .evaluate import RecommenderEvaluator
 
 main = Blueprint('main', __name__)
 
@@ -43,5 +44,52 @@ def recommend():
     except Exception as e:
         current_app.logger.error(f"Error getting recommendations: {e}")
         flash('Error getting recommendations. Please try again.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+@main.route('/visualizations')
+@login_required
+def visualizations():
+    """Display data visualizations and analytics."""
+    try:
+        evaluator = RecommenderEvaluator()
+        
+        # Generate plots
+        rating_plot = evaluator.create_rating_distribution_plot()
+        interaction_plot = evaluator.create_user_item_interaction_plot()
+        similarity_plot = evaluator.create_user_similarity_heatmap()
+        
+        # Run evaluation for metrics plot
+        results = evaluator.run_full_evaluation(k_values=[5, 10])
+        metrics_plot = evaluator.create_evaluation_metrics_plot(results)
+        
+        return render_template('visualizations.html', 
+                             rating_plot=rating_plot,
+                             interaction_plot=interaction_plot,
+                             similarity_plot=similarity_plot,
+                             metrics_plot=metrics_plot,
+                             username=current_user.username)
+                             
+    except Exception as e:
+        current_app.logger.error(f"Error generating visualizations: {e}")
+        flash('Error generating visualizations. Please try again.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+@main.route('/network/<user_id>/<product_id>')
+@login_required
+def network_visualization(user_id, product_id):
+    """Display network visualization for specific user and product."""
+    try:
+        evaluator = RecommenderEvaluator()
+        network_plot = evaluator.create_recommendation_network_plot(user_id, product_id)
+        
+        return render_template('network.html', 
+                             network_plot=network_plot,
+                             user_id=user_id,
+                             product_id=product_id,
+                             username=current_user.username)
+                             
+    except Exception as e:
+        current_app.logger.error(f"Error generating network visualization: {e}")
+        flash('Error generating network visualization. Please try again.', 'danger')
         return redirect(url_for('main.dashboard'))
 

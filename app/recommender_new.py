@@ -83,14 +83,10 @@ def get_cf_scores(user_id):
 # CB FUNCTION
 # =========================
 def get_cb_scores(product_id):
-    """Get content-based similarity scores for a given product."""
-    if product_id not in product_id_to_idx:
+    if product_id not in df['product_id'].values:
         return pd.Series(dtype=float)
 
-    idx = product_id_to_idx[product_id]
-    
-    if not isinstance(idx, (int, type(None))) or idx < 0 or idx >= content_sim.shape[0]:
-        return pd.Series(dtype=float)
+    idx = df[df['product_id'] == product_id].index[0]
 
     sim_scores = pd.Series(content_sim[idx], index=df['product_id'])
 
@@ -140,6 +136,6 @@ def hybrid_recommend(user_id, product_id, top_n=5, alpha=0.7):
         .fillna('')
         .to_dict(orient='records')
     )
-    print(results)
+   #print(results)
 
     return results

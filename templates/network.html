@@ -1,0 +1,147 @@
+{% extends "layout.html" %}
+
+{% block title %}Network Visualization - E-Commerce Recommender{% endblock %}
+
+{% block extra_css %}
+<style>
+    .network-container {
+        max-width: 1200px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+    }
+
+    .network-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+
+    .network-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .network-card h3 {
+        color: #2c3e50;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .plot-container {
+        width: 100%;
+        height: 600px;
+        margin: 0 auto;
+    }
+
+    .btn-back {
+        display: inline-block;
+        padding: 0.75rem 1.5rem;
+        background-color: #95a5a6;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: 600;
+        transition: background-color 0.3s ease;
+        margin-bottom: 2rem;
+    }
+
+    .btn-back:hover {
+        background-color: #7f8c8d;
+    }
+
+    .network-info {
+        background-color: #ecf0f1;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+    }
+
+    .network-info h4 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .network-info p {
+        color: #555;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin-bottom: 1rem;
+    }
+
+    @media (max-width: 768px) {
+        .network-container {
+            padding: 0 0.5rem;
+        }
+
+        .network-card {
+            padding: 1rem;
+        }
+
+        .plot-container {
+            height: 400px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="network-container">
+    <!-- Header -->
+    <div class="network-header">
+        <h1>🔗 Recommendation Network</h1>
+        <p>Interactive network visualization of recommendations</p>
+    </div>
+
+    <!-- Back Button -->
+    <a href="{{ url_for('main.visualizations') }}" class="btn-back">← Back to Visualizations</a>
+
+    <!-- Network Info -->
+    <div class="network-info">
+        <h4>Network Visualization for User {{ user_id }} and Product {{ product_id }}</h4>
+        <p>
+            This network graph shows the recommendation relationships starting from the reference product.
+            The central nodes represent the user and reference product, while the connected nodes show
+            the recommended products based on the hybrid recommendation algorithm.
+        </p>
+        <ul style="color: #555; line-height: 1.8;">
+            <li><strong>🔴 Red node:</strong> The user</li>
+            <li><strong>🔵 Blue node:</strong> Reference product</li>
+            <li><strong>🟢 Green nodes:</strong> Recommended products</li>
+            <li><strong>Lines:</strong> Connection strengths based on recommendation scores</li>
+        </ul>
+    </div>
+
+    <!-- Network Visualization -->
+    <div class="network-card">
+        <h3>🌐 Recommendation Network Graph</h3>
+        <div class="plot-container">
+            {{ network_plot|safe }}
+        </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="network-card">
+        <h3>ℹ️ How to Use This Visualization</h3>
+        <div style="padding: 1rem 0;">
+            <ul style="color: #555; line-height: 1.8;">
+                <li><strong>Hover:</strong> Hover over nodes to see details</li>
+                <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out</li>
+                <li><strong>Pan:</strong> Click and drag to move around the graph</li>
+                <li><strong>Interact:</strong> Click on nodes to highlight connections</li>
+            </ul>
+            <p style="margin-top: 1rem; color: #555;">
+                <em>This visualization helps understand how recommendations are connected and related to each other.</em>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

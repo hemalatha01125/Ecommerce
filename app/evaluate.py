@@ -10,8 +10,13 @@ from collections import defaultdict
 import warnings
 warnings.filterwarnings('ignore')
 
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import networkx as nx
+
 from app.preprocessing import load_data
-from app.recommender import hybrid_recommend
+from app.recommender import hybrid_recommend, get_cf_scores, get_cb_scores
 
 class RecommenderEvaluator:
     """Comprehensive evaluation class for the e-commerce recommender system."""
@@ -108,8 +113,8 @@ class RecommenderEvaluator:
         rmse = np.sqrt(mean_squared_error(actual_ratings, predicted_ratings))
         mae = mean_absolute_error(actual_ratings, predicted_ratings)
 
-        print(".4f")
-        print(".4f")
+        print(f"RMSE: {rmse:.4f}")
+        print(f"MAE: {mae:.4f}")
         print(f"Number of predictions: {len(actual_ratings)}")
 
         return rmse, mae
@@ -165,9 +170,9 @@ class RecommenderEvaluator:
         avg_recall = np.mean(recall_scores)
         f1_score = 2 * (avg_precision * avg_recall) / (avg_precision + avg_recall) if (avg_precision + avg_recall) > 0 else 0
 
-        print(".4f")
-        print(".4f")
-        print(".4f")
+        print(f"Precision@{k}: {avg_precision:.4f}")
+        print(f"Recall@{k}: {avg_recall:.4f}")
+        print(f"F1@{k}: {f1_score:.4f}")
         print(f"Number of users evaluated: {len(precision_scores)}")
 
         return avg_precision, avg_recall, f1_score
@@ -221,10 +226,209 @@ class RecommenderEvaluator:
             return None
 
         avg_ndcg = np.mean(ndcg_scores)
-        print(".4f")
+        print(f"NDCG@{k}: {avg_ndcg:.4f}")
         print(f"Number of users evaluated: {len(ndcg_scores)}")
 
         return avg_ndcg
+
+    def create_rating_distribution_plot(self):
+        """Create interactive plot of rating distribution."""
+        fig = px.histogram(
+            self.df,
+            x='rating',
+            nbins=20,
+            title='Rating Distribution',
+            labels={'rating': 'Rating', 'count': 'Frequency'},
+            color_discrete_sequence=['#3498db']
+        )
+        fig.update_layout(
+            xaxis_title="Rating",
+            yaxis_title="Number of Ratings",
+            showlegend=False
+        )
+        return fig.to_html(full_html=False)
+
+    def create_user_item_interaction_plot(self):
+        """Create plot showing user-item interactions."""
+        user_counts = self.df.groupby('user_id').size().reset_index(name='interactions')
+        product_counts = self.df.groupby('product_id').size().reset_index(name='interactions')
+
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Users by Number of Interactions', 'Products by Number of Ratings')
+        )
+
+        fig.add_trace(
+            go.Histogram(x=user_counts['interactions'], name='Users', marker_color='#e74c3c'),
+            row=1, col=1
+        )
+
+        fig.add_trace(
+            go.Histogram(x=product_counts['interactions'], name='Products', marker_color='#27ae60'),
+            row=1, col=2
+        )
+
+        fig.update_layout(
+            title_text="User-Item Interaction Distribution",
+            showlegend=False
+        )
+        fig.update_xaxes(title_text="Number of Interactions", row=1, col=1)
+        fig.update_xaxes(title_text="Number of Ratings", row=1, col=2)
+        fig.update_yaxes(title_text="Count", row=1, col=1)
+        fig.update_yaxes(title_text="Count", row=1, col=2)
+
+        return fig.to_html(full_html=False)
+
+    def create_evaluation_metrics_plot(self, results):
+        """Create bar plot of evaluation metrics."""
+        metrics = []
+        values = []
+
+        for key, value in results.items():
+            if isinstance(value, (int, float)) and not np.isnan(value):
+                metrics.append(key.upper())
+                values.append(value)
+
+        fig = px.bar(
+            x=metrics,
+            y=values,
+            title='Model Evaluation Metrics',
+            labels={'x': 'Metric', 'y': 'Value'},
+            color=values,
+            color_continuous_scale='Blues'
+        )
+        fig.update_layout(
+            xaxis_title="Evaluation Metric",
+            yaxis_title="Score",
+            coloraxis_showscale=False
+        )
+        return fig.to_html(full_html=False)
+
+    def create_recommendation_network_plot(self, user_id, product_id, top_n=10):
+        """Create network visualization of recommendations."""
+        try:
+            recommendations = hybrid_recommend(user_id, product_id, top_n=top_n)
+
+            # Create network graph
+            G = nx.Graph()
+
+            # Add central user-product node
+            G.add_node(f"User: {user_id}", node_type='user', color='red', size=20)
+            G.add_node(f"Product: {product_id}", node_type='product', color='blue', size=15)
+
+            # Add recommended products
+            for i, rec in enumerate(recommendations):
+                product_node = f"Rec {i+1}: {rec['product_id']}"
+                G.add_node(product_node, node_type='recommendation', color='green', size=10)
+                G.add_edge(f"Product: {product_id}", product_node, weight=rec.get('rating', 1))
+
+            # Add user connection
+            G.add_edge(f"User: {user_id}", f"Product: {product_id}", weight=5)
+
+            # Get positions
+            pos = nx.spring_layout(G, k=2, iterations=50)
+
+            # Create edge traces
+            edge_x = []
+            edge_y = []
+            for edge in G.edges():
+                x0, y0 = pos[edge[0]]
+                x1, y1 = pos[edge[1]]
+                edge_x.extend([x0, x1, None])
+                edge_y.extend([y0, y1, None])
+
+            edge_trace = go.Scatter(
+                x=edge_x, y=edge_y,
+                line=dict(width=2, color='#888'),
+                hoverinfo='none',
+                mode='lines')
+
+            # Create node traces
+            node_x = []
+            node_y = []
+            node_text = []
+            node_color = []
+            node_size = []
+
+            for node in G.nodes():
+                x, y = pos[node]
+                node_x.append(x)
+                node_y.append(y)
+                node_text.append(node)
+                node_color.append(G.nodes[node]['color'])
+                node_size.append(G.nodes[node]['size'])
+
+            node_trace = go.Scatter(
+                x=node_x, y=node_y,
+                mode='markers+text',
+                hoverinfo='text',
+                text=node_text,
+                textposition="top center",
+                marker=dict(
+                    showscale=False,
+                    color=node_color,
+                    size=node_size,
+                    line_width=2
+                )
+            )
+
+            # Create figure
+            fig = go.Figure(data=[edge_trace, node_trace],
+                          layout=go.Layout(
+                              title=f"Recommendation Network for User {user_id}",
+                              titlefont_size=16,
+                              showlegend=False,
+                              hovermode='closest',
+                              margin=dict(b=20,l=5,r=5,t=40),
+                              xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                              yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                          )
+
+            return fig.to_html(full_html=False)
+
+        except Exception as e:
+            print(f"Error creating network plot: {e}")
+            return "<p>Error generating network visualization</p>"
+
+    def create_user_similarity_heatmap(self, sample_size=20):
+        """Create heatmap of user similarity based on ratings."""
+        # Sample users and products for visualization
+        sample_users = self.df['user_id'].unique()[:sample_size]
+        sample_products = self.df['product_id'].unique()[:sample_size]
+
+        # Create rating matrix for sample
+        sample_data = self.df[
+            self.df['user_id'].isin(sample_users) &
+            self.df['product_id'].isin(sample_products)
+        ]
+
+        if sample_data.empty:
+            return "<p>Not enough data for similarity heatmap</p>"
+
+        pivot_table = sample_data.pivot_table(
+            index='user_id',
+            columns='product_id',
+            values='rating',
+            fill_value=0
+        )
+
+        # Calculate user similarity (cosine similarity)
+        from sklearn.metrics.pairwise import cosine_similarity
+        similarity_matrix = cosine_similarity(pivot_table)
+
+        fig = px.imshow(
+            similarity_matrix,
+            x=pivot_table.index,
+            y=pivot_table.index,
+            title='User Similarity Heatmap',
+            labels=dict(x="User ID", y="User ID", color="Similarity"),
+            color_continuous_scale='RdBu_r'
+        )
+        fig.update_layout(
+            xaxis_title="User ID",
+            yaxis_title="User ID"
+        )
+        return fig.to_html(full_html=False)
 
     def run_full_evaluation(self, k_values=[5, 10]):
         """Run complete evaluation suite."""
@@ -257,7 +461,40 @@ class RecommenderEvaluator:
         print("=" * 60)
 
         for metric, value in results.items():
-            print("20")
+            print(f"{metric.upper()}: {value:.4f}")
+
+        return results
+        """Run complete evaluation suite."""
+        print("=" * 60)
+        print("E-COMMERCE RECOMMENDER SYSTEM EVALUATION")
+        print("=" * 60)
+
+        results = {}
+
+        # RMSE and MAE
+        rmse_result = self.calculate_rmse()
+        if rmse_result:
+            results['rmse'], results['mae'] = rmse_result
+
+        # Precision, Recall, F1 for different k values
+        for k in k_values:
+            precision, recall, f1 = self.calculate_precision_recall(k)
+            if precision is not None:
+                results[f'precision@{k}'] = precision
+                results[f'recall@{k}'] = recall
+                results[f'f1@{k}'] = f1
+
+            ndcg = self.calculate_ndcg(k)
+            if ndcg is not None:
+                results[f'ndcg@{k}'] = ndcg
+
+        # Summary
+        print("\n" + "=" * 60)
+        print("EVALUATION SUMMARY")
+        print("=" * 60)
+
+        for metric, value in results.items():
+            print(f"{metric.upper()}: {value:.4f}")
 
         return results
 
