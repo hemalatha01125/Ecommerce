@@ -60,86 +60,180 @@ user_sim_df = pd.DataFrame(user_sim, index=user_item.index, columns=user_item.in
 # =========================
 # CF FUNCTION
 # =========================
-def get_cf_scores(user_id):
-    if user_id not in user_item.index:
-        return pd.Series(dtype=float)
+def get_cf_scores(user_id, n_similar_users=15):
+    """
+    Collaborative Filtering recommendation scores for a user.
 
-    similar_users = user_sim_df[user_id].sort_values(ascending=False)[1:6]
+    - Uses top_k similar users (15 by default)
+    - Falls back for cold start users
+    - Handles empty similarity results
+    - Ensures non-zero prediction scores
+    """
+
+    if user_id not in user_item.index:
+        return _get_popular_items()
+
+    try:
+        similarities = user_sim_df.loc[user_id].sort_values(ascending=False)
+        similar_user_ids = similarities.index[1:n_similar_users + 1].tolist()
+    except Exception:
+        return _get_popular_items()
+
+    if not similar_user_ids:
+        return _get_popular_items()
 
     scores = pd.Series(dtype=float)
 
-    for sim_user, similarity in similar_users.items():
-        user_ratings = user_item.loc[sim_user]
-        scores = scores.add(user_ratings * similarity, fill_value=0)
+    for similar_user in similar_user_ids:
+        try:
+            sim_weight = user_sim_df.loc[user_id, similar_user]
+            if sim_weight <= 0:
+                continue
 
-    # Remove already rated
-    rated = user_item.loc[user_id].dropna().index
-    scores = scores.drop(rated, errors='ignore')
+            user_ratings = user_item.loc[similar_user]
+            rated_values = user_ratings[user_ratings > 0]
+            if rated_values.empty:
+                continue
+
+            scores = scores.add(rated_values * sim_weight, fill_value=0)
+        except Exception:
+            continue
+
+    if scores.empty:
+        return _get_popular_items()
+
+    scores = scores[scores > 0]
+    if scores.empty:
+        return _get_popular_items()
 
     return scores
 
 
+def _get_popular_items():
+    """Global fallback recommendations using average product ratings."""
+    try:
+        avg_ratings = user_item.mean(axis=0)
+        avg_ratings = avg_ratings[avg_ratings > 0]
+        if not avg_ratings.empty:
+            return avg_ratings
+        return user_item.sum(axis=0)[user_item.sum(axis=0) > 0]
+    except Exception:
+        return pd.Series(dtype=float)
+
+
 # =========================
-# CB FUNCTION
+# CB FUNCTION - SIMPLIFIED
 # =========================
 def get_cb_scores(product_id):
-    """Get content-based similarity scores for a given product."""
+    """
+    Content-based similarity scores for a product.
+    
+    Args:
+        product_id: Target product ID
+    
+    Returns:
+        pd.Series: Similarity scores for similar products
+    """
     if product_id not in product_id_to_idx:
         return pd.Series(dtype=float)
-
-    idx = product_id_to_idx[product_id]
     
-    if not isinstance(idx, (int, type(None))) or idx < 0 or idx >= content_sim.shape[0]:
+    try:
+        idx = product_id_to_idx[product_id]
+        
+        # Get similarity scores from pre-computed matrix
+        sim_scores = pd.Series(content_sim[idx], index=df['product_id'])
+        
+        # Remove the product itself
+        sim_scores = sim_scores.drop(product_id, errors='ignore')
+        
+        # Keep only positive similarities
+        sim_scores = sim_scores[sim_scores > 0]
+        
+        return sim_scores if not sim_scores.empty else pd.Series(dtype=float)
+    
+    except:
         return pd.Series(dtype=float)
 
-    sim_scores = pd.Series(content_sim[idx], index=df['product_id'])
-
-    return sim_scores
-
 
 # =========================
-# HYBRID RECOMMENDER
+# HYBRID RECOMMENDER - SIMPLIFIED
 # =========================
 def hybrid_recommend(user_id, product_id, top_n=5, alpha=0.7):
+    """
+    Hybrid recommendation system combining CF and CB.
+    
+    Args:
+        user_id: Target user ID
+        product_id: Reference product ID
+        top_n: Number of recommendations
+        alpha: CF weight (0-1), CB weight = 1-alpha
+    
+    Returns:
+        list: Recommended products with details
+    """
     user_id = str(user_id).strip()
     product_id = str(product_id).strip()
 
-    # Get scores
+    # Get scores from both algorithms
     cf_scores = get_cf_scores(user_id)
     cb_scores = get_cb_scores(product_id)
-
-    # Normalize
-    if not cf_scores.empty:
-        cf_scores = (cf_scores - cf_scores.min()) / (cf_scores.max() - cf_scores.min() + 1e-9)
-
-    if not cb_scores.empty:
-        cb_scores = (cb_scores - cb_scores.min()) / (cb_scores.max() - cb_scores.min() + 1e-9)
-
-    # Combine
-    final_scores = alpha * cf_scores.add(cb_scores, fill_value=0)
-
-    # Sort
-    final_scores = final_scores.sort_values(ascending=False)
-
-    # Get top products
-    top_products = final_scores.head(top_n).index.tolist()
-
-    if not top_products:
-        print(f"[hybrid_recommend] No recommendations found for user_id={user_id}, product_id={product_id}")
+    
+    # If no scores from either algorithm, return empty
+    if cf_scores.empty and cb_scores.empty:
         return []
-
-    # Return full details in recommendation order
-    results = (
-        df[df['product_id'].isin(top_products)][
-            ['product_id', 'product_name', 'rating', 'discounted_price', 'img_link']
-        ]
-        .drop_duplicates(subset=['product_id'])
-        .set_index('product_id')
-        .reindex(top_products)
-        .reset_index()
-        .fillna('')
-        .to_dict(orient='records')
-    )
-    print(results)
-
-    return results
+    
+    # Normalize CF scores to [0, 1]
+    if not cf_scores.empty:
+        cf_min, cf_max = cf_scores.min(), cf_scores.max()
+        if cf_max > cf_min:
+            cf_norm = (cf_scores - cf_min) / (cf_max - cf_min)
+        else:
+            cf_norm = cf_scores / (cf_scores.max() + 1e-10)
+    else:
+        cf_norm = pd.Series(dtype=float)
+    
+    # Normalize CB scores to [0, 1]
+    if not cb_scores.empty:
+        cb_min, cb_max = cb_scores.min(), cb_scores.max()
+        if cb_max > cb_min:
+            cb_norm = (cb_scores - cb_min) / (cb_max - cb_min)
+        else:
+            cb_norm = cb_scores / (cb_scores.max() + 1e-10)
+    else:
+        cb_norm = pd.Series(dtype=float)
+    
+    # Combine scores
+    if not cf_norm.empty and not cb_norm.empty:
+        # Both have scores - combine with weights
+        final_scores = alpha * cf_norm.add((1 - alpha) * cb_norm, fill_value=0)
+    elif not cf_norm.empty:
+        # Only CF has scores
+        final_scores = cf_norm
+    else:
+        # Only CB has scores
+        final_scores = cb_norm
+    
+    if final_scores.empty:
+        return []
+    
+    # Get top N products
+    top_products = final_scores.nlargest(top_n).index.tolist()
+    
+    # Build recommendation list with product details
+    try:
+        results = []
+        for product in top_products:
+            matching = df[df['product_id'] == product]
+            if not matching.empty:
+                row = matching.iloc[0]
+                results.append({
+                    'product_id': product,
+                    'product_name': row['product_name'],
+                    'rating': row['rating'],
+                    'discounted_price': row['discounted_price'],
+                    'img_link': row['img_link']
+                })
+        
+        return results
+    except:
+        return []

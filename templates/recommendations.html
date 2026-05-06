@@ -2,8 +2,18 @@
 
 {% block title %}Recommendations - E-Commerce Recommender{% endblock %}
 
+{% block body_class %}page-recommendations{% endblock %}
+
 {% block extra_css %}
 <style>
+    body.page-recommendations {
+        background-image: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url('{{ url_for('static', filename='images/bg.jpg') }}');
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        color: #fff;
+    }
+
     .recommendations-container {
         max-width: 1200px;
         margin: 2rem auto;
@@ -184,7 +194,7 @@ function handleImageError(img) {
         return;
     }
     img.dataset.fallbackApplied = "true";
-    img.src = "https://via.placeholder.com/250?text=Image+Unavailable";
+    img.src = "{{ url_for('static', filename='images/image-not-available.png') }}";
     img.alt = "Image unavailable";
 }
 
@@ -194,6 +204,3 @@ function addToCart(productName) {
 }
 </script>
 {% endblock %}
-
-</body>
-</html>

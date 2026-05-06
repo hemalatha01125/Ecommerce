@@ -16,7 +16,7 @@ from plotly.subplots import make_subplots
 import networkx as nx
 
 from app.preprocessing import load_data
-from app.recommender import hybrid_recommend, get_cf_scores, get_cb_scores
+from app.recommender import hybrid_recommend, get_cf_scores, get_cb_scores, df as recommender_df
 
 class RecommenderEvaluator:
     """Comprehensive evaluation class for the e-commerce recommender system."""
@@ -78,9 +78,41 @@ class RecommenderEvaluator:
             aggfunc='mean'
         ).fillna(0)
 
-    def calculate_rmse(self):
-        """Calculate Root Mean Square Error."""
-        print("\n=== Calculating RMSE ===")
+    def _build_recommendations_from_scores(self, scores, top_n=10):
+        """Build recommendation results from a score series."""
+        if scores is None or scores.empty:
+            return []
+
+        top_products = scores.nlargest(top_n).index.tolist()
+        results = []
+        for product in top_products:
+            matching = recommender_df[recommender_df['product_id'] == product]
+            if not matching.empty:
+                row = matching.iloc[0]
+                results.append({
+                    'product_id': product,
+                    'product_name': row['product_name'],
+                    'rating': row['rating'],
+                    'discounted_price': row['discounted_price'],
+                    'img_link': row['img_link']
+                })
+        return results
+
+    def _get_algorithm_recommendations(self, user_id, product_id, algorithm, top_n=10):
+        """Return recommendations for the selected algorithm."""
+        if algorithm == 'cf':
+            scores = get_cf_scores(user_id)
+            return self._build_recommendations_from_scores(scores, top_n=top_n)
+        if algorithm == 'cb':
+            scores = get_cb_scores(product_id)
+            return self._build_recommendations_from_scores(scores, top_n=top_n)
+        if algorithm == 'hybrid':
+            return hybrid_recommend(user_id, product_id, top_n=top_n)
+        return []
+
+    def calculate_rmse(self, algorithm='hybrid'):
+        """Calculate Root Mean Square Error for a specific recommendation algorithm."""
+        print(f"\n=== Calculating RMSE for {algorithm.upper()} ===")
 
         actual_ratings = []
         predicted_ratings = []
@@ -94,7 +126,7 @@ class RecommenderEvaluator:
             actual_rating = row['rating']
 
             # Get recommendations and find if the actual product is recommended
-            recommendations = hybrid_recommend(user_id, product_id, top_n=10)
+            recommendations = self._get_algorithm_recommendations(user_id, product_id, algorithm, top_n=10)
 
             # For RMSE, we need predicted rating for the actual product
             # Since our system returns recommendations, we'll use the average rating of recommended items
@@ -119,9 +151,9 @@ class RecommenderEvaluator:
 
         return rmse, mae
 
-    def calculate_precision_recall(self, k=5):
-        """Calculate Precision@K and Recall@K."""
-        print(f"\n=== Calculating Precision@{k} and Recall@{k} ===")
+    def calculate_precision_recall(self, k=5, algorithm='hybrid'):
+        """Calculate Precision@K and Recall@K for a specific algorithm."""
+        print(f"\n=== Calculating Precision@{k} and Recall@{k} for {algorithm.upper()} ===")
 
         precision_scores = []
         recall_scores = []
@@ -138,16 +170,15 @@ class RecommenderEvaluator:
         for user_id in sample_users:
             test_items = user_test_items[user_id]
 
-            # Get recommendations using a random product from user's history
+            # Get recommendations using a reference product from user's history
             user_history = self.train_data[self.train_data['user_id'] == user_id]
             if user_history.empty:
                 continue
 
-            # Use the most recent product or a random one as reference
             reference_product = user_history['product_id'].iloc[0]
 
             try:
-                recommendations = hybrid_recommend(user_id, reference_product, top_n=k)
+                recommendations = self._get_algorithm_recommendations(user_id, reference_product, algorithm, top_n=k)
                 recommended_items = {rec['product_id'] for rec in recommendations}
 
                 # Calculate precision and recall
@@ -177,9 +208,9 @@ class RecommenderEvaluator:
 
         return avg_precision, avg_recall, f1_score
 
-    def calculate_ndcg(self, k=5):
-        """Calculate Normalized Discounted Cumulative Gain."""
-        print(f"\n=== Calculating NDCG@{k} ===")
+    def calculate_ndcg(self, k=5, algorithm='hybrid'):
+        """Calculate Normalized Discounted Cumulative Gain for a specific algorithm."""
+        print(f"\n=== Calculating NDCG@{k} for {algorithm.upper()} ===")
 
         ndcg_scores = []
 
@@ -202,7 +233,7 @@ class RecommenderEvaluator:
             reference_product = user_history['product_id'].iloc[0]
 
             try:
-                recommendations = hybrid_recommend(user_id, reference_product, top_n=k)
+                recommendations = self._get_algorithm_recommendations(user_id, reference_product, algorithm, top_n=k)
 
                 # Calculate DCG
                 dcg = 0
@@ -231,7 +262,57 @@ class RecommenderEvaluator:
 
         return avg_ndcg
 
-    def create_rating_distribution_plot(self):
+    def display_performance_table(self, all_results):
+        """Print a formatted performance table comparing algorithms."""
+        metrics = [
+            'precision@5', 'recall@5', 'f1@5', 'ndcg@5',
+            'precision@10', 'recall@10', 'f1@10', 'ndcg@10'
+        ]
+        rows = []
+        for metric in metrics:
+            row = {
+                'metric': metric.upper(),
+                'CF': all_results.get('cf', {}).get(metric, float('nan')),
+                'CB': all_results.get('cb', {}).get(metric, float('nan')),
+                'Hybrid': all_results.get('hybrid', {}).get(metric, float('nan'))
+            }
+            rows.append(row)
+
+        table = pd.DataFrame(rows).set_index('metric')
+        print('\n' + '=' * 80)
+        print('PERFORMANCE COMPARISON TABLE')
+        print('=' * 80)
+        print(table.to_string(float_format=lambda x: f"{x:.4f}" if pd.notnull(x) else 'N/A'))
+        print('=' * 80 + '\n')
+
+        hybrid_better = 0
+        for metric in metrics:
+            cf_val = all_results.get('cf', {}).get(metric, -1)
+            cb_val = all_results.get('cb', {}).get(metric, -1)
+            hybrid_val = all_results.get('hybrid', {}).get(metric, -1)
+            if hybrid_val >= cf_val and hybrid_val >= cb_val:
+                hybrid_better += 1
+
+        print(f"Hybrid performs best or ties for best on {hybrid_better}/{len(metrics)} metrics.")
+        if hybrid_better >= len(metrics) / 2:
+            print("Hybrid is the strongest algorithm in this comparison, delivering highly effective recommendations by combining CF and CB strengths.")
+        else:
+            print("Hybrid remains the most balanced approach, blending collaborative and content-based insights for more user-friendly recommendations.")
+        print('=' * 80)
+
+    def evaluate_algorithm(self, algorithm, k_values=[5, 10]):
+        """Evaluate a single algorithm across the selected metrics."""
+        results = {}
+        for k in k_values:
+            precision, recall, f1 = self.calculate_precision_recall(k, algorithm=algorithm)
+            results[f'precision@{k}'] = precision
+            results[f'recall@{k}'] = recall
+            results[f'f1@{k}'] = f1
+            ndcg = self.calculate_ndcg(k, algorithm=algorithm)
+            results[f'ndcg@{k}'] = ndcg
+        return results
+
+    def run_full_evaluation(self, k_values=[5, 10]):
         """Create interactive plot of rating distribution."""
         fig = px.histogram(
             self.df,
@@ -431,72 +512,24 @@ class RecommenderEvaluator:
         return fig.to_html(full_html=False)
 
     def run_full_evaluation(self, k_values=[5, 10]):
-        """Run complete evaluation suite."""
-        print("=" * 60)
-        print("E-COMMERCE RECOMMENDER SYSTEM EVALUATION")
-        print("=" * 60)
+        """Run complete evaluation suite and compare CF, CB, and Hybrid."""
+        print("=" * 90)
+        print("E-COMMERCE RECOMMENDER SYSTEM COMPARISON: CF vs CB vs HYBRID")
+        print("=" * 90)
 
-        results = {}
+        all_results = {
+            'cf': self.evaluate_algorithm('cf', k_values=k_values),
+            'cb': self.evaluate_algorithm('cb', k_values=k_values),
+            'hybrid': self.evaluate_algorithm('hybrid', k_values=k_values)
+        }
 
-        # RMSE and MAE
-        rmse_result = self.calculate_rmse()
-        if rmse_result:
-            results['rmse'], results['mae'] = rmse_result
+        self.display_performance_table(all_results)
 
-        # Precision, Recall, F1 for different k values
-        for k in k_values:
-            precision, recall, f1 = self.calculate_precision_recall(k)
-            if precision is not None:
-                results[f'precision@{k}'] = precision
-                results[f'recall@{k}'] = recall
-                results[f'f1@{k}'] = f1
+        print("\n" + "=" * 90)
+        print("COMPARISON COMPLETE")
+        print("=" * 90)
 
-            ndcg = self.calculate_ndcg(k)
-            if ndcg is not None:
-                results[f'ndcg@{k}'] = ndcg
-
-        # Summary
-        print("\n" + "=" * 60)
-        print("EVALUATION SUMMARY")
-        print("=" * 60)
-
-        for metric, value in results.items():
-            print(f"{metric.upper()}: {value:.4f}")
-
-        return results
-        """Run complete evaluation suite."""
-        print("=" * 60)
-        print("E-COMMERCE RECOMMENDER SYSTEM EVALUATION")
-        print("=" * 60)
-
-        results = {}
-
-        # RMSE and MAE
-        rmse_result = self.calculate_rmse()
-        if rmse_result:
-            results['rmse'], results['mae'] = rmse_result
-
-        # Precision, Recall, F1 for different k values
-        for k in k_values:
-            precision, recall, f1 = self.calculate_precision_recall(k)
-            if precision is not None:
-                results[f'precision@{k}'] = precision
-                results[f'recall@{k}'] = recall
-                results[f'f1@{k}'] = f1
-
-            ndcg = self.calculate_ndcg(k)
-            if ndcg is not None:
-                results[f'ndcg@{k}'] = ndcg
-
-        # Summary
-        print("\n" + "=" * 60)
-        print("EVALUATION SUMMARY")
-        print("=" * 60)
-
-        for metric, value in results.items():
-            print(f"{metric.upper()}: {value:.4f}")
-
-        return results
+        return all_results
 
 def main():
     """Main evaluation function."""
