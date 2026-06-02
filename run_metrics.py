@@ -5,7 +5,7 @@ from app.evaluate import RecommenderEvaluator
 print("Initializing evaluator...")
 evaluator = RecommenderEvaluator()
 
-print("Displaying performance table...\n")
-metrics = evaluator.display_performance_table(k=5)
+print("Running full evaluation...\n")
+all_results = evaluator.run_full_evaluation(k_values=[5, 10])
 
 print("\nResults captured successfully!")

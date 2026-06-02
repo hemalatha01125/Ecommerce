@@ -16,7 +16,13 @@ from plotly.subplots import make_subplots
 import networkx as nx
 
 from app.preprocessing import load_data
-from app.recommender import hybrid_recommend, get_cf_scores, get_cb_scores, df as recommender_df
+from app.recommender import (
+    df as recommender_df,
+    get_cb_scores,
+    get_cf_scores,
+    hybrid_recommend,
+    interaction_df,
+)
 
 class RecommenderEvaluator:
     """Comprehensive evaluation class for the e-commerce recommender system."""
@@ -25,10 +31,14 @@ class RecommenderEvaluator:
         """Initialize evaluator with test data split."""
         self.test_size = test_size
         self.random_state = random_state
-        self.df = load_data()
+        self.debug_eval = os.environ.get("EVAL_DEBUG", "0") == "1"
+        self.df = interaction_df.copy()
         self.train_data, self.test_data = self._prepare_data()
         self.user_item_train = None
         self._prepare_user_item_matrix()
+        self.eval_users = sorted(
+            set(self.train_data["user_id"]).intersection(set(self.test_data["user_id"]))
+        )
 
     def _prepare_data(self):
         """Prepare train/test split for evaluation."""
@@ -41,26 +51,30 @@ class RecommenderEvaluator:
         self.df['rating'] = pd.to_numeric(self.df['rating'], errors='coerce')
         self.df = self.df.dropna(subset=['rating'])
 
-        # Convert user_id and product_id to string for consistency
-        self.df['user_id'] = self.df['user_id'].astype(str)
-        self.df['product_id'] = self.df['product_id'].astype(str)
+        self.df['user_id'] = self.df['user_id'].astype(str).str.strip()
+        self.df['product_id'] = self.df['product_id'].astype(str).str.strip()
+        self.df = self.df.drop_duplicates(subset=['user_id', 'product_id'], keep='first')
 
-        # Split data (remove stratification if it causes issues)
-        try:
-            train_data, test_data = train_test_split(
-                self.df,
-                test_size=self.test_size,
-                random_state=self.random_state,
-                stratify=self.df['user_id'] if len(self.df['user_id'].unique()) > 1 else None
-            )
-        except ValueError:
-            # Fallback to simple split if stratification fails
-            print("Warning: Using simple train/test split (stratification failed)")
-            train_data, test_data = train_test_split(
-                self.df,
-                test_size=self.test_size,
-                random_state=self.random_state
-            )
+        rng = np.random.default_rng(self.random_state)
+        train_parts = []
+        test_parts = []
+
+        # Leave at least one training interaction per evaluated user. Users with
+        # one interaction remain in train for fitting/fallback popularity only.
+        for _, user_rows in self.df.groupby('user_id', sort=False):
+            if len(user_rows) < 2:
+                train_parts.append(user_rows)
+                continue
+
+            n_test = max(1, int(round(len(user_rows) * self.test_size)))
+            n_test = min(n_test, len(user_rows) - 1)
+            test_idx = set(rng.choice(user_rows.index.to_numpy(), size=n_test, replace=False))
+
+            test_parts.append(user_rows.loc[list(test_idx)])
+            train_parts.append(user_rows.drop(index=list(test_idx)))
+
+        train_data = pd.concat(train_parts).reset_index(drop=True)
+        test_data = pd.concat(test_parts).reset_index(drop=True)
 
         print(f"Train set: {len(train_data)} interactions")
         print(f"Test set: {len(test_data)} interactions")
@@ -98,16 +112,36 @@ class RecommenderEvaluator:
                 })
         return results
 
+    def _get_train_history(self, user_id):
+        user_history = self.train_data[self.train_data['user_id'] == user_id]
+        if user_history.empty:
+            return pd.Series(dtype=float)
+        return user_history.set_index('product_id')['rating']
+
     def _get_algorithm_recommendations(self, user_id, product_id, algorithm, top_n=10):
         """Return recommendations for the selected algorithm."""
+        train_history = self._get_train_history(user_id)
+        exclude_items = set(train_history.index)
+
         if algorithm == 'cf':
-            scores = get_cf_scores(user_id)
+            scores = get_cf_scores(
+                user_id,
+                top_k=max(top_n, 20),
+                exclude_items=exclude_items,
+                user_history=train_history,
+            )
             return self._build_recommendations_from_scores(scores, top_n=top_n)
         if algorithm == 'cb':
-            scores = get_cb_scores(product_id)
+            scores = get_cb_scores(product_id, exclude_items=exclude_items)
             return self._build_recommendations_from_scores(scores, top_n=top_n)
         if algorithm == 'hybrid':
-            return hybrid_recommend(user_id, product_id, top_n=top_n)
+            return hybrid_recommend(
+                user_id,
+                product_id,
+                top_n=top_n,
+                exclude_items=exclude_items,
+                user_history=train_history,
+            )
         return []
 
     def calculate_rmse(self, algorithm='hybrid'):
@@ -163,9 +197,7 @@ class RecommenderEvaluator:
         for _, row in self.test_data.iterrows():
             user_test_items[row['user_id']].add(row['product_id'])
 
-        # Sample users for evaluation
-        test_users = list(user_test_items.keys())
-        sample_users = np.random.choice(test_users, min(100, len(test_users)), replace=False)
+        sample_users = [user for user in self.eval_users if user in user_test_items]
 
         for user_id in sample_users:
             test_items = user_test_items[user_id]
@@ -181,13 +213,19 @@ class RecommenderEvaluator:
                 recommendations = self._get_algorithm_recommendations(user_id, reference_product, algorithm, top_n=k)
                 recommended_items = {rec['product_id'] for rec in recommendations}
 
-                # Calculate precision and recall
                 relevant_recommended = len(recommended_items & test_items)
                 precision = relevant_recommended / k if k > 0 else 0
                 recall = relevant_recommended / len(test_items) if test_items else 0
 
                 precision_scores.append(precision)
                 recall_scores.append(recall)
+
+                if self.debug_eval:
+                    print(
+                        f"[DEBUG {algorithm.upper()}@{k}] user={user_id} "
+                        f"test={sorted(test_items)} recs={list(recommended_items)} "
+                        f"hits={relevant_recommended}"
+                    )
 
             except Exception as e:
                 print(f"Error for user {user_id}: {e}")
@@ -219,8 +257,7 @@ class RecommenderEvaluator:
         for _, row in self.test_data.iterrows():
             user_test_ratings[row['user_id']][row['product_id']] = row['rating']
 
-        test_users = list(user_test_ratings.keys())
-        sample_users = np.random.choice(test_users, min(50, len(test_users)), replace=False)
+        sample_users = [user for user in self.eval_users if user in user_test_ratings]
 
         for user_id in sample_users:
             test_ratings = user_test_ratings[user_id]
@@ -247,6 +284,13 @@ class RecommenderEvaluator:
 
                 ndcg = dcg / idcg if idcg > 0 else 0
                 ndcg_scores.append(ndcg)
+
+                if self.debug_eval:
+                    rec_ids = [rec['product_id'] for rec in recommendations]
+                    print(
+                        f"[DEBUG NDCG {algorithm.upper()}@{k}] user={user_id} "
+                        f"test={test_ratings} recs={rec_ids} dcg={dcg:.4f} idcg={idcg:.4f}"
+                    )
 
             except Exception as e:
                 print(f"Error calculating NDCG for user {user_id}: {e}")
