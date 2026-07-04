@@ -1,154 +1,94 @@
-# 🛒 E-Commerce Recommender System
+# E-Commerce Recommender System
 
-A hybrid recommendation system that combines **Collaborative Filtering (CF)** and **Content-Based Filtering (CB)** to provide personalized product suggestions.
+A hybrid recommendation system that combines collaborative filtering and content-based filtering to provide personalized product suggestions.
 
----
+## Features
 
-## 📌 Features
+- Hybrid recommendation model using collaborative filtering and TF-IDF content similarity
+- Flask backend with SQLite by default
+- JWT authentication for API clients
+- User registration, login, logout, password hashing, token validation, and token revocation
+- Role-based authorization with `admin` and `user` roles
+- Protected recommendation, wishlist, and cart APIs
+- React frontend with protected routes, product catalog, product detail page, wishlist, and cart
+- Product detail data includes image, title, description, category, price, rating, stock status, and recommended similar products
 
-* Hybrid recommendation model (CF + CB)
-* Product similarity using TF-IDF
-* Personalized recommendations
-* RMSE evaluation support
-* Flask-based web interface
+## Project Structure
 
----
-
-## 📁 Project Structure
-
-```
-ecommerce-recommender/
-│
-├── app/                        
-│   ├── routes.py              
-│   ├── recommender.py         
-│   ├── preprocessing.py       
-│   ├── model.py               
-│   └── utils.py
-│
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── models/
-│
-├── templates/                 
-├── static/                    
-├── notebooks/                 
-├── config.py                  
-├── run.py                     
-├── requirements.txt
-└── README.md
+```text
+app/
+  api.py              JWT API routes and authorization middleware
+  auth.py             Existing Flask-Login template auth
+  models.py           SQLAlchemy users, sessions, wishlist, and cart models
+  product_service.py  Product catalog helpers for API responses
+  recommender.py      Recommendation engine
+frontend/
+  src/                React app
+templates/            Existing server-rendered Flask pages
+static/               Existing Flask static assets
+data/raw/amazon.csv   Product and interaction data
+run.py                Flask entry point
+API_DOCUMENTATION.md  REST API reference
 ```
 
----
+## Backend Setup
 
-## ⚙️ Setup Instructions
-
-### 1. Clone the repository
-
-```
-git clone https://github.com/your-username/ecommerce-recommender.git
-cd ecommerce-recommender
-```
-
----
-
-### 2. Create virtual environment
-
-```
+```powershell
 python -m venv venv
-```
-
----
-
-### 3. Activate environment
-
-**Windows**
-
-```
 venv\Scripts\activate
-```
-
-**Mac/Linux**
-
-```
-source venv/bin/activate
-```
-
----
-
-### 4. Install dependencies
-
-```
 pip install -r requirements.txt
-```
-
----
-
-### 5. Prepare Data
-
-* Place your dataset inside:
-
-```
-data/raw/
-```
-
-* Run preprocessing (if required):
-
-```
-python -m app.preprocessing
-```
-
----
-
-### 6. Run the Application
-
-```
 python run.py
 ```
 
-Open in browser:
+Backend URL:
 
-```
-http://127.0.0.1:5000/
-```
-
----
-
-## 📊 Model Evaluation (RMSE)
-
-Run:
-
-```
-python -m app.evaluate
+```text
+http://127.0.0.1:5000
 ```
 
----
+Useful environment variables:
 
-## 🧠 Algorithms Used
+```powershell
+$env:SECRET_KEY="replace-me"
+$env:JWT_SECRET_KEY="replace-me-too"
+$env:JWT_ACCESS_TOKEN_EXPIRES_MINUTES="60"
+$env:CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
+```
 
-* Collaborative Filtering
-* Content-Based Filtering (TF-IDF)
-* Hybrid Recommendation System
+## Frontend Setup
 
----
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-## 📌 Notes
+React URL:
 
-* Dataset is not included due to size.
-* Add your dataset in `data/raw/`
-* Model files (`.pkl`) are ignored using `.gitignore`
+```text
+http://127.0.0.1:5173
+```
 
----
+Set a custom backend URL with:
 
-## 🚀 Future Improvements
+```powershell
+$env:VITE_API_BASE_URL="http://127.0.0.1:5000/api"
+```
 
-* Precision@K and Recall@K
-* Deep Learning-based recommendations
-* Real-time recommendation API
+## API Documentation
 
----
+See [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
-## 👩‍💻 Author
+## Admin Role
 
-Your Name
+Public registration always creates a `user` account. For local development, promote a trusted account in SQLite:
+
+```sql
+UPDATE users SET role = 'admin' WHERE username = 'alice';
+```
+
+## Notes
+
+- SQLite is used by default through `sqlite:///recommender.db`; set `DATABASE_URL` to use another database such as MySQL.
+- Existing Flask template pages still work with Flask-Login.
+- The source dataset has no live inventory column, so product stock status is a stable derived value for UI demonstration.
