@@ -310,7 +310,8 @@ class RecommenderEvaluator:
         """Print a formatted performance table comparing algorithms."""
         metrics = [
             'precision@5', 'recall@5', 'f1@5', 'ndcg@5',
-            'precision@10', 'recall@10', 'f1@10', 'ndcg@10'
+            'precision@10', 'recall@10', 'f1@10', 'ndcg@10',
+            'rmse', 'mae'
         ]
         rows = []
         for metric in metrics:
@@ -354,6 +355,14 @@ class RecommenderEvaluator:
             results[f'f1@{k}'] = f1
             ndcg = self.calculate_ndcg(k, algorithm=algorithm)
             results[f'ndcg@{k}'] = ndcg
+
+        rmse_mae = self.calculate_rmse(algorithm=algorithm)
+        if rmse_mae is None:
+            results['rmse'] = None
+            results['mae'] = None
+        else:
+            results['rmse'], results['mae'] = rmse_mae
+
         return results
 
     def run_full_evaluation(self, k_values=[5, 10]):

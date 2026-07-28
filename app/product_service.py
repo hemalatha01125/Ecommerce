@@ -116,7 +116,9 @@ def get_similar_products(product_id, top_n=6):
 
 
 def get_personalized_recommendations(user_id, product_id, top_n=6):
-    rows = hybrid_recommend(user_id, product_id, top_n=top_n)
+    similar_ids = set(get_cb_scores(product_id, top_n=top_n).index)
+    exclude_items = similar_ids | {str(product_id).strip()}
+    rows = hybrid_recommend(user_id, product_id, top_n=top_n, exclude_items=exclude_items)
     items = []
     for row in rows:
         product = get_product(row["product_id"])
