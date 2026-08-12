@@ -4,7 +4,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from collections import defaultdict
 import warnings
@@ -15,13 +14,15 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import networkx as nx
 
-from app.preprocessing import load_data
 from app.recommender import (
-    df as recommender_df,
+    ensure_data_loaded,
+    get_behavior_hybrid_scores,
     get_cb_scores,
     get_cf_scores,
+    get_hybrid_scores,
+    get_interaction_data,
     hybrid_recommend,
-    interaction_df,
+    normalize_series,
 )
 
 class RecommenderEvaluator:
@@ -32,8 +33,10 @@ class RecommenderEvaluator:
         self.test_size = test_size
         self.random_state = random_state
         self.debug_eval = os.environ.get("EVAL_DEBUG", "0") == "1"
-        self.df = interaction_df.copy()
+        self.catalog_df, _ = ensure_data_loaded()
+        self.df = get_interaction_data(include_behavior=True)
         self.train_data, self.test_data = self._prepare_data()
+        self.train_behavior_data = self.train_data[self.train_data.get('source') == 'behavior'].copy()
         self.user_item_train = None
         self._prepare_user_item_matrix()
         self.eval_users = sorted(
@@ -43,7 +46,7 @@ class RecommenderEvaluator:
     def _prepare_data(self):
         """Prepare train/test split for evaluation."""
         # Ensure we have the necessary columns
-        required_cols = ['user_id', 'product_id', 'rating']
+        required_cols = ['user_id', 'product_id', 'rating', 'created_at']
         if not all(col in self.df.columns for col in required_cols):
             raise ValueError(f"Data must contain columns: {required_cols}")
 
@@ -53,33 +56,42 @@ class RecommenderEvaluator:
 
         self.df['user_id'] = self.df['user_id'].astype(str).str.strip()
         self.df['product_id'] = self.df['product_id'].astype(str).str.strip()
-        self.df = self.df.drop_duplicates(subset=['user_id', 'product_id'], keep='first')
+        self.df['created_at'] = pd.to_datetime(self.df['created_at'], errors='coerce')
+        self.df = self.df.dropna(subset=['created_at'])
+        self.df = self.df.sort_values(['user_id', 'created_at'])
+        self.df = self.df.drop_duplicates(subset=['user_id', 'product_id'], keep='last')
 
-        rng = np.random.default_rng(self.random_state)
         train_parts = []
         test_parts = []
 
-        # Leave at least one training interaction per evaluated user. Users with
-        # one interaction remain in train for fitting/fallback popularity only.
+        # Chronological holdout: each user's newest interactions become test
+        # data and are never passed to recommendation functions as history.
         for _, user_rows in self.df.groupby('user_id', sort=False):
+            user_rows = user_rows.sort_values('created_at')
             if len(user_rows) < 2:
                 train_parts.append(user_rows)
                 continue
 
             n_test = max(1, int(round(len(user_rows) * self.test_size)))
             n_test = min(n_test, len(user_rows) - 1)
-            test_idx = set(rng.choice(user_rows.index.to_numpy(), size=n_test, replace=False))
 
-            test_parts.append(user_rows.loc[list(test_idx)])
-            train_parts.append(user_rows.drop(index=list(test_idx)))
+            test_parts.append(user_rows.tail(n_test))
+            train_parts.append(user_rows.iloc[:-n_test])
 
         train_data = pd.concat(train_parts).reset_index(drop=True)
-        test_data = pd.concat(test_parts).reset_index(drop=True)
+        test_data = pd.concat(test_parts).reset_index(drop=True) if test_parts else pd.DataFrame(columns=train_data.columns)
 
+        leakage_violations = 0
+        for user_id in set(train_data['user_id']).intersection(set(test_data['user_id'])):
+            latest_train = train_data.loc[train_data['user_id'] == user_id, 'created_at'].max()
+            earliest_test = test_data.loc[test_data['user_id'] == user_id, 'created_at'].min()
+            if latest_train > earliest_test:
+                leakage_violations += 1
         print(f"Train set: {len(train_data)} interactions")
         print(f"Test set: {len(test_data)} interactions")
         print(f"Unique users in train: {train_data['user_id'].nunique()}")
         print(f"Unique users in test: {test_data['user_id'].nunique()}")
+        print(f"Per-user time leakage violations: {leakage_violations}")
 
         return train_data, test_data
 
@@ -100,7 +112,7 @@ class RecommenderEvaluator:
         top_products = scores.nlargest(top_n).index.tolist()
         results = []
         for product in top_products:
-            matching = recommender_df[recommender_df['product_id'] == product]
+            matching = self.catalog_df[self.catalog_df['product_id'] == product]
             if not matching.empty:
                 row = matching.iloc[0]
                 results.append({
@@ -120,29 +132,43 @@ class RecommenderEvaluator:
 
     def _get_algorithm_recommendations(self, user_id, product_id, algorithm, top_n=10):
         """Return recommendations for the selected algorithm."""
+        scores = self._get_algorithm_scores(user_id, product_id, algorithm, top_n=max(top_n, 20))
+        if scores is not None:
+            return self._build_recommendations_from_scores(scores, top_n=top_n)
+        return []
+
+    def _get_algorithm_scores(self, user_id, product_id, algorithm, top_n=20):
+        """Return item scores for the selected algorithm using training data only."""
         train_history = self._get_train_history(user_id)
         exclude_items = set(train_history.index)
 
         if algorithm == 'cf':
-            scores = get_cf_scores(
+            return get_cf_scores(
                 user_id,
                 top_k=max(top_n, 20),
                 exclude_items=exclude_items,
                 user_history=train_history,
             )
-            return self._build_recommendations_from_scores(scores, top_n=top_n)
         if algorithm == 'cb':
-            scores = get_cb_scores(product_id, exclude_items=exclude_items)
-            return self._build_recommendations_from_scores(scores, top_n=top_n)
+            return get_cb_scores(product_id, exclude_items=exclude_items)
         if algorithm == 'hybrid':
-            return hybrid_recommend(
+            return get_hybrid_scores(
                 user_id,
                 product_id,
-                top_n=top_n,
+                top_n=max(top_n * 10, 100),
                 exclude_items=exclude_items,
                 user_history=train_history,
             )
-        return []
+        if algorithm == 'behavior_hybrid':
+            return get_behavior_hybrid_scores(
+                user_id,
+                product_id,
+                top_n=max(top_n * 10, 100),
+                exclude_items=exclude_items,
+                user_history=train_history,
+                behavior_df=self.train_behavior_data,
+            )
+        return pd.Series(dtype=float)
 
     def calculate_rmse(self, algorithm='hybrid'):
         """Calculate Root Mean Square Error for a specific recommendation algorithm."""
@@ -159,13 +185,9 @@ class RecommenderEvaluator:
             product_id = row['product_id']
             actual_rating = row['rating']
 
-            # Get recommendations and find if the actual product is recommended
-            recommendations = self._get_algorithm_recommendations(user_id, product_id, algorithm, top_n=10)
-
-            # For RMSE, we need predicted rating for the actual product
-            # Since our system returns recommendations, we'll use the average rating of recommended items
-            if recommendations:
-                pred_rating = np.mean([rec.get('rating', 0) for rec in recommendations if rec.get('rating')])
+            scores = self._get_algorithm_scores(user_id, product_id, algorithm, top_n=200)
+            if scores is not None and product_id in scores.index:
+                pred_rating = 1.0 + 4.0 * float(normalize_series(scores).get(product_id, 0.0))
             else:
                 pred_rating = self.train_data['rating'].mean()  # Global mean fallback
 
@@ -246,6 +268,49 @@ class RecommenderEvaluator:
 
         return avg_precision, avg_recall, f1_score
 
+    def calculate_accuracy(self, k=10, algorithm='hybrid'):
+        """Calculate top-k recommendation accuracy as user-level hit rate."""
+        print(f"\n=== Calculating Accuracy@{k} for {algorithm.upper()} ===")
+
+        user_test_items = defaultdict(set)
+        for _, row in self.test_data.iterrows():
+            user_test_items[row['user_id']].add(row['product_id'])
+
+        sample_users = [user for user in self.eval_users if user in user_test_items]
+        hits = 0
+        evaluated = 0
+
+        for user_id in sample_users:
+            user_history = self.train_data[self.train_data['user_id'] == user_id]
+            if user_history.empty:
+                continue
+
+            reference_product = user_history['product_id'].iloc[0]
+
+            try:
+                recommendations = self._get_algorithm_recommendations(user_id, reference_product, algorithm, top_n=k)
+                recommended_items = {rec['product_id'] for rec in recommendations}
+                hits += int(bool(recommended_items & user_test_items[user_id]))
+                evaluated += 1
+
+                if self.debug_eval:
+                    print(
+                        f"[DEBUG ACCURACY {algorithm.upper()}@{k}] user={user_id} "
+                        f"test={sorted(user_test_items[user_id])} recs={list(recommended_items)}"
+                    )
+            except Exception as e:
+                print(f"Error calculating accuracy for user {user_id}: {e}")
+                continue
+
+        if evaluated == 0:
+            print("No valid accuracy calculations")
+            return None
+
+        accuracy = hits / evaluated
+        print(f"Accuracy@{k}: {accuracy:.4f}")
+        print(f"Users with at least one hit: {hits}/{evaluated}")
+        return accuracy
+
     def calculate_ndcg(self, k=5, algorithm='hybrid'):
         """Calculate Normalized Discounted Cumulative Gain for a specific algorithm."""
         print(f"\n=== Calculating NDCG@{k} for {algorithm.upper()} ===")
@@ -309,17 +374,22 @@ class RecommenderEvaluator:
     def display_performance_table(self, all_results):
         """Print a formatted performance table comparing algorithms."""
         metrics = [
-            'precision@5', 'recall@5', 'f1@5', 'ndcg@5',
+            'accuracy', 'precision@5', 'recall@5', 'f1@5', 'ndcg@5',
             'precision@10', 'recall@10', 'f1@10', 'ndcg@10',
             'rmse', 'mae'
         ]
         rows = []
         for metric in metrics:
+            value = all_results.get('cf', {}).get(metric, float('nan'))
+            cb_value = all_results.get('cb', {}).get(metric, float('nan'))
+            hybrid_value = all_results.get('hybrid', {}).get(metric, float('nan'))
+            behavior_value = all_results.get('behavior_hybrid', {}).get(metric, float('nan'))
             row = {
                 'metric': metric.upper(),
-                'CF': all_results.get('cf', {}).get(metric, float('nan')),
-                'CB': all_results.get('cb', {}).get(metric, float('nan')),
-                'Hybrid': all_results.get('hybrid', {}).get(metric, float('nan'))
+                'CF': value,
+                'CB': cb_value,
+                'Hybrid': hybrid_value,
+                'Behavior-Aware Hybrid': behavior_value,
             }
             rows.append(row)
 
@@ -335,14 +405,15 @@ class RecommenderEvaluator:
             cf_val = all_results.get('cf', {}).get(metric, -1)
             cb_val = all_results.get('cb', {}).get(metric, -1)
             hybrid_val = all_results.get('hybrid', {}).get(metric, -1)
-            if hybrid_val >= cf_val and hybrid_val >= cb_val:
+            behavior_val = all_results.get('behavior_hybrid', {}).get(metric, -1)
+            if behavior_val >= cf_val and behavior_val >= cb_val and behavior_val >= hybrid_val:
                 hybrid_better += 1
 
-        print(f"Hybrid performs best or ties for best on {hybrid_better}/{len(metrics)} metrics.")
+        print(f"Behavior-Aware Hybrid performs best or ties for best on {hybrid_better}/{len(metrics)} metrics.")
         if hybrid_better >= len(metrics) / 2:
-            print("Hybrid is the strongest algorithm in this comparison, delivering highly effective recommendations by combining CF and CB strengths.")
+            print("Behavior-Aware Hybrid is the strongest algorithm in this comparison because it combines catalog, content, and real user behavior.")
         else:
-            print("Hybrid remains the most balanced approach, blending collaborative and content-based insights for more user-friendly recommendations.")
+            print("Existing Hybrid remains competitive, while Behavior-Aware Hybrid will usually improve as authenticated behavior accumulates.")
         print('=' * 80)
 
     def evaluate_algorithm(self, algorithm, k_values=[5, 10]):
@@ -355,6 +426,9 @@ class RecommenderEvaluator:
             results[f'f1@{k}'] = f1
             ndcg = self.calculate_ndcg(k, algorithm=algorithm)
             results[f'ndcg@{k}'] = ndcg
+
+        accuracy_k = max(k_values) if k_values else 10
+        results['accuracy'] = self.calculate_accuracy(k=accuracy_k, algorithm=algorithm)
 
         rmse_mae = self.calculate_rmse(algorithm=algorithm)
         if rmse_mae is None:
@@ -565,15 +639,16 @@ class RecommenderEvaluator:
         return fig.to_html(full_html=False)
 
     def run_full_evaluation(self, k_values=[5, 10]):
-        """Run complete evaluation suite and compare CF, CB, and Hybrid."""
+        """Run complete evaluation suite and compare CF, CB, Hybrid, and Behavior-Aware Hybrid."""
         print("=" * 90)
-        print("E-COMMERCE RECOMMENDER SYSTEM COMPARISON: CF vs CB vs HYBRID")
+        print("E-COMMERCE RECOMMENDER SYSTEM COMPARISON: CF vs CB vs HYBRID vs BEHAVIOR-AWARE HYBRID")
         print("=" * 90)
 
         all_results = {
             'cf': self.evaluate_algorithm('cf', k_values=k_values),
             'cb': self.evaluate_algorithm('cb', k_values=k_values),
-            'hybrid': self.evaluate_algorithm('hybrid', k_values=k_values)
+            'hybrid': self.evaluate_algorithm('hybrid', k_values=k_values),
+            'behavior_hybrid': self.evaluate_algorithm('behavior_hybrid', k_values=k_values),
         }
 
         self.display_performance_table(all_results)

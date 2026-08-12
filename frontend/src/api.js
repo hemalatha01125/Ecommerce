@@ -62,6 +62,18 @@ export const api = {
   product: (id) => apiRequest(`/products/${encodeURIComponent(id)}`),
   similar: (id) => apiRequest(`/products/${encodeURIComponent(id)}/similar`),
   personalized: (id) => apiRequest(`/recommendations/personalized?${new URLSearchParams({ product_id: id })}`),
+  behavior: (productId, eventType, score) =>
+    apiRequest("/behavior", {
+      method: "POST",
+      body: JSON.stringify({ product_id: productId, event_type: eventType, score }),
+    }),
+  like: (productId) =>
+    apiRequest("/behavior", { method: "POST", body: JSON.stringify({ product_id: productId, event_type: "like" }) }),
+  rate: (productId, score) =>
+    apiRequest("/behavior", {
+      method: "POST",
+      body: JSON.stringify({ product_id: productId, event_type: "rating", score }),
+    }),
   wishlist: () => apiRequest("/wishlist"),
   addWishlist: (productId) => apiRequest("/wishlist", { method: "POST", body: JSON.stringify({ product_id: productId }) }),
   removeWishlist: (productId) => apiRequest(`/wishlist/${encodeURIComponent(productId)}`, { method: "DELETE" }),
@@ -71,5 +83,6 @@ export const api = {
   updateCart: (productId, quantity) =>
     apiRequest(`/cart/${encodeURIComponent(productId)}`, { method: "PATCH", body: JSON.stringify({ quantity }) }),
   removeCart: (productId) => apiRequest(`/cart/${encodeURIComponent(productId)}`, { method: "DELETE" }),
+  checkout: () => apiRequest("/cart/checkout", { method: "POST" }),
   users: () => apiRequest("/admin/users"),
 };

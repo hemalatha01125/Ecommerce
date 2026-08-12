@@ -92,3 +92,39 @@ class CartItem(db.Model):
 
     user = db.relationship('User', backref=db.backref('cart_items', lazy=True, cascade='all, delete-orphan'))
     __table_args__ = (db.UniqueConstraint('user_id', 'product_id', name='uq_cart_user_product'),)
+
+
+class UserBehaviorEvent(db.Model):
+    __tablename__ = 'behavior_events'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    product_id = db.Column(db.String(80), nullable=False, index=True)
+    event_type = db.Column(db.String(40), nullable=False, index=True)
+    score = db.Column(db.Float, nullable=False, default=1.0)
+    created_at = db.Column(db.DateTime, default=db.func.now(), index=True)
+
+    user = db.relationship('User', backref=db.backref('behavior_events', lazy=True, cascade='all, delete-orphan'))
+
+    EVENT_WEIGHTS = {
+        'view': 2.0,
+        'like': 3.0,
+        'wishlist': 3.5,
+        'rating': 4.0,
+        'cart': 4.2,
+        'purchase': 5.0,
+    }
+
+    @classmethod
+    def weight_for(cls, event_type):
+        return cls.EVENT_WEIGHTS.get(str(event_type).lower().strip(), 1.0)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'product_id': self.product_id,
+            'event_type': self.event_type,
+            'score': self.score,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }

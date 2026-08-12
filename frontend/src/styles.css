@@ -246,6 +246,20 @@ select,
   gap: 8px;
 }
 
+.rating-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.rating-actions button,
+.checkout-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .stock {
   border-radius: 999px;
   padding: 6px 10px;
@@ -278,6 +292,10 @@ select,
 
 .section-title {
   margin: 28px 0 14px;
+}
+
+.checkout-button {
+  margin-bottom: 14px;
 }
 
 .auth-panel {

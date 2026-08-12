@@ -2,7 +2,7 @@ import hashlib
 
 import pandas as pd
 
-from .recommender import RAW_DATA_PATH, get_cb_scores, hybrid_recommend
+from .recommender import RAW_DATA_PATH, behavior_hybrid_recommend, get_cb_scores
 
 
 PRODUCT_COLUMNS = [
@@ -115,10 +115,18 @@ def get_similar_products(product_id, top_n=6):
     return items
 
 
-def get_personalized_recommendations(user_id, product_id, top_n=6):
+def get_personalized_recommendations(user_id, product_id, top_n=6, user_history=None):
     similar_ids = set(get_cb_scores(product_id, top_n=top_n).index)
     exclude_items = similar_ids | {str(product_id).strip()}
-    rows = hybrid_recommend(user_id, product_id, top_n=top_n, exclude_items=exclude_items)
+    if user_history:
+        exclude_items.update(str(item_id).strip() for item_id in user_history.keys())
+    rows = behavior_hybrid_recommend(
+        user_id,
+        product_id,
+        top_n=top_n,
+        exclude_items=exclude_items,
+        user_history=user_history,
+    )
     items = []
     for row in rows:
         product = get_product(row["product_id"])

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Heart, LogOut, Search, ShoppingCart, ShieldCheck, UserRound } from "lucide-react";
+import { Heart, LogOut, Search, ShoppingCart, ShieldCheck, Star, ThumbsUp, UserRound } from "lucide-react";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { api } from "./api";
 import "./styles.css";
@@ -236,6 +236,7 @@ function ProductDetail({ productId }) {
     try {
       await task(productId);
       setMessage("Saved.");
+      api.personalized(productId).then((data) => setPersonalized(data.items)).catch(() => setPersonalized([]));
     } catch (err) {
       setMessage(err.message);
     }
@@ -265,14 +266,26 @@ function ProductDetail({ productId }) {
             <span className={product.stock_status === "In stock" ? "stock in" : "stock out"}>{product.stock_status}</span>
           </div>
           {token ? (
-            <div className="actions">
-              <button className="primary" onClick={() => action(api.addCart)}>
-                <ShoppingCart size={18} /> Add to cart
-              </button>
-              <button onClick={() => action(api.addWishlist)}>
-                <Heart size={18} /> Wishlist
-              </button>
-            </div>
+            <>
+              <div className="actions">
+                <button className="primary" onClick={() => action(api.addCart)}>
+                  <ShoppingCart size={18} /> Add to cart
+                </button>
+                <button onClick={() => action(api.addWishlist)}>
+                  <Heart size={18} /> Wishlist
+                </button>
+                <button onClick={() => action(api.like)}>
+                  <ThumbsUp size={18} /> Like
+                </button>
+              </div>
+              <div className="rating-actions" aria-label="Rate product">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <button key={score} onClick={() => action((id) => api.rate(id, score))} title={`Rate ${score}`}>
+                    <Star size={16} /> {score}
+                  </button>
+                ))}
+              </div>
+            </>
           ) : (
             <p className="callout">Log in to view recommendations, save wishlist items, and use your cart.</p>
           )}
@@ -321,10 +334,25 @@ function SavedItems({ type }) {
     load();
   }
 
+  async function checkout() {
+    try {
+      await api.checkout();
+      setError("");
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   if (error) return <StateMessage title={`Could not load ${type}`} message={error} />;
   return (
     <section>
       <h1 className="section-title">{type === "cart" ? "Cart" : "Wishlist"}</h1>
+      {type === "cart" && items.length > 0 && (
+        <button className="primary checkout-button" onClick={checkout}>
+          <ShoppingCart size={18} /> Checkout
+        </button>
+      )}
       <div className="saved-list">
         {items.map(({ product, quantity }) => (
           <article key={product.product_id}>
